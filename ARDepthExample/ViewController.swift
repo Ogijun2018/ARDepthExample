@@ -10,14 +10,27 @@ import SceneKit
 import ARKit
 import Foundation
 
-class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
+class ViewController: UIViewController {
 
     var session: ARSession!
     var sessionIsPaused = true
     @IBOutlet var sceneView: ARSCNView!
 
     var displayLink: CADisplayLink?
-    var timerStarted = false
+    var timerStarted = false {
+        didSet {
+            timerStartButton.isHidden = timerStarted
+        }
+    }
+    /// sessionを停止させるタイミングのtoggle
+    /// true: stop→distance検出
+    /// false: distance検出→stop
+    var detectDistanceMode = false
+    var isShowTimer = true {
+        didSet {
+            timerLabel.isHidden = !isShowTimer
+        }
+    }
 
     var startTime: TimeInterval = 0
     var elapsedTime: TimeInterval = 0
@@ -53,19 +66,32 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setImage(image, for: .normal)
         button.backgroundColor = .white
-        button.layer.cornerRadius = 20
+        button.layer.cornerRadius = 50
         return button
     }()
 
     var resumeButton: UIButton = {
         let button = UIButton()
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle("LiDAR Session\nStart", for: .normal)
+        button.setTitle("Session\nStart", for: .normal)
         button.titleLabel?.numberOfLines = 0
         button.setTitleColor(.systemBlue, for: .normal)
         button.backgroundColor = .white
         button.layer.cornerRadius = 20
         return button
+    }()
+
+    var stopModeToggleButton: UISwitch = {
+        let uiswitch = UISwitch()
+        uiswitch.translatesAutoresizingMaskIntoConstraints = false
+        return uiswitch
+    }()
+
+    var showTimerToggleButton: UISwitch = {
+        let uiswitch = UISwitch()
+        uiswitch.translatesAutoresizingMaskIntoConstraints = false
+        uiswitch.isOn = true
+        return uiswitch
     }()
 
     func resumeButtonTapped() {
@@ -78,32 +104,22 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         }
         session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         sessionIsPaused = false
-        timerStartButton.isHidden = false
     }
 
     func timerStartButtonTapped() {
         timerLabel.text = "00:00.00"
-        guard !timerStarted, !sessionIsPaused else {
-            print("\(!timerStarted), \(!sessionIsPaused)")
-            return
-        }
+        guard !timerStarted, !sessionIsPaused else { return }
         timerStarted = true
         // 0秒になったらタイマーを開始する
         displayLink = CADisplayLink(target: self, selector: #selector(checkForNextZeroSecond))
         displayLink?.add(to: .main, forMode: .default)
-        timerStartButton.isHidden = true
     }
 
     @objc func checkForNextZeroSecond() {
-        let calendar = Calendar.current
-        let now = Date()
-
-        let currentSeconds = calendar.component(.second, from: now)
-
-        if currentSeconds == 0 {
-            displayLink?.invalidate()
-            startTimer()
-        }
+        let currentSeconds = Calendar.current.component(.second, from: Date())
+        guard currentSeconds == 0 else { return }
+        displayLink?.invalidate()
+        startTimer()
     }
 
     func startTimer() {
@@ -124,7 +140,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         timerLabel.text = String(format: "%02d:%02d.%02d", minutes, seconds, fraction)
     }
 
-    // 初回起動が完了した場合true
+    /// session.runしてから距離を検出するまでのraycast.result=nilで停止しないためのフラグ
     var flag = false
 
     override func viewDidLoad() {
@@ -151,6 +167,8 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         sceneView.addSubview(resumeButton)
         sceneView.addSubview(timerStartButton)
         sceneView.addSubview(timerLabel)
+        sceneView.addSubview(stopModeToggleButton)
+        sceneView.addSubview(showTimerToggleButton)
         resumeButton.addAction(.init { [weak self] _ in
             guard let self else { return }
             self.resumeButtonTapped()
@@ -158,6 +176,14 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         timerStartButton.addAction(.init { [weak self] _ in
             guard let self else { return }
             self.timerStartButtonTapped()
+        }, for: .touchUpInside)
+        stopModeToggleButton.addAction(.init { [weak self] _ in
+            guard let self else { return }
+            self.detectDistanceMode.toggle()
+        }, for: .touchUpInside)
+        showTimerToggleButton.addAction(.init { [weak self] _ in
+            guard let self else { return }
+            self.isShowTimer.toggle()
         }, for: .touchUpInside)
 
         NSLayoutConstraint.activate([
@@ -169,72 +195,79 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
             resumeButton.bottomAnchor.constraint(equalTo: sceneView.bottomAnchor, constant: -50),
             resumeButton.rightAnchor.constraint(equalTo: sceneView.rightAnchor, constant: -20),
             resumeButton.heightAnchor.constraint(equalToConstant: 100),
-            resumeButton.widthAnchor.constraint(equalToConstant: 150),
-            timerStartButton.bottomAnchor.constraint(equalTo: sceneView.bottomAnchor, constant: -180),
-            timerStartButton.rightAnchor.constraint(equalTo: sceneView.rightAnchor, constant: -20),
+            resumeButton.widthAnchor.constraint(equalToConstant: 100),
+            timerStartButton.bottomAnchor.constraint(equalTo: resumeButton.topAnchor, constant: -20),
+            timerStartButton.rightAnchor.constraint(equalTo: resumeButton.rightAnchor),
             timerStartButton.heightAnchor.constraint(equalToConstant: 100),
-            timerStartButton.widthAnchor.constraint(equalToConstant: 150),
+            timerStartButton.widthAnchor.constraint(equalToConstant: 100),
             timerLabel.topAnchor.constraint(equalTo: sceneView.topAnchor, constant: 20),
-            timerLabel.leftAnchor.constraint(equalTo: sceneView.leftAnchor, constant: 20)
+            timerLabel.leftAnchor.constraint(equalTo: sceneView.leftAnchor, constant: 20),
+            stopModeToggleButton.rightAnchor.constraint(equalTo: resumeButton.rightAnchor),
+            stopModeToggleButton.bottomAnchor.constraint(equalTo: timerStartButton.topAnchor, constant: -20),
+            showTimerToggleButton.rightAnchor.constraint(equalTo: resumeButton.rightAnchor),
+            showTimerToggleButton.bottomAnchor.constraint(equalTo: stopModeToggleButton.topAnchor, constant: -20)
         ])
     }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        session.pause()
+    }
+}
 
+extension ViewController: ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let centerPoint = CGPoint(x: sceneView.frame.midX, y: sceneView.frame.midY)
-        guard let raycast = sceneView.raycastQuery(from: centerPoint, allowing: .estimatedPlane, alignment: .any),
-              let result = sceneView.session.raycast(raycast).first else {
-            // resultがnilの時(距離の計算結果がnilの時)
-            if (flag) {
-                session.pause()
+        if detectDistanceMode {
+            // stop→distance検出時にsession.pause()
+            guard let raycast = sceneView.raycastQuery(from: centerPoint, allowing: .estimatedPlane, alignment: .any),
+                  let result = sceneView.session.raycast(raycast).first else {
+                return
             }
-            label.text = "Stop"
+
+            session.pause()
+            label.text = "Distance: \(String(format: "%.3f", calculateDistance(raycastResult: result, frame: frame))) m"
             displayLink?.invalidate()
             timerStarted = false
-            return
+        } else {
+            // distance検出中→stop時にsession.pause()
+            guard let raycast = sceneView.raycastQuery(from: centerPoint, allowing: .estimatedPlane, alignment: .any),
+                  let result = sceneView.session.raycast(raycast).first else {
+                if (flag) {
+                    session.pause()
+                }
+                label.text = "Stop"
+                displayLink?.invalidate()
+                timerStarted = false
+                return
+            }
+            if !flag { flag = true }
+            label.text = "Distance: \(String(format: "%.3f", calculateDistance(raycastResult: result, frame: frame))) m"
         }
-        if !flag { flag = true }
+    }
 
-        let position = SCNVector3(result.worldTransform.columns.3.x, result.worldTransform.columns.3.y, result.worldTransform.columns.3.z)
+    func calculateDistance(raycastResult: ARRaycastResult, frame: ARFrame) -> Float {
+        let position = SCNVector3(
+            raycastResult.worldTransform.columns.3.x,
+            raycastResult.worldTransform.columns.3.y,
+            raycastResult.worldTransform.columns.3.z
+        )
 
         let transform = frame.camera.transform.columns.3
         let cameraCoordinates = SCNVector3(x: transform.x, y: transform.y, z: transform.z)
 
         let distance = cameraCoordinates.distance(to: position)
-        label.text = "Distance: \(String(format: "%.3f", distance)) m"
+        return distance
     }
-    
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-    }
-    
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        
-        // Pause the view's session
-        session.pause()
-    }
+}
 
+extension ViewController: ARSCNViewDelegate {
     // MARK: - ARSCNViewDelegate
-    
-/*
-    // Override to create and configure nodes for anchors added to the view's session.
-    func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
-        let node = SCNNode()
-     
-        return node
-    }
-*/
-    
-    func session(_ session: ARSession, didFailWithError error: Error) {
-        // Present an error message to the user
-        
-    }
-    
     func sessionWasInterrupted(_ session: ARSession) {
         // Inform the user that the session has been interrupted, for example, by presenting an overlay
         sessionIsPaused = true
     }
-    
+
     func sessionInterruptionEnded(_ session: ARSession) {
         // Reset tracking and/or remove existing anchors if consistent tracking is required
         sessionIsPaused = false
