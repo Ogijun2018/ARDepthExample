@@ -31,11 +31,13 @@ class ViewController: UIViewController {
             timerLabel.isHidden = !isShowTimer
         }
     }
+    /// session.runしてから距離を検出するまでのraycast.result=nilで停止しないためのフラグ
+    var flag = false
 
     var startTime: TimeInterval = 0
     var elapsedTime: TimeInterval = 0
 
-    var timerLabel: UILabel = {
+    let timerLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .boldSystemFont(ofSize: 80)
@@ -44,7 +46,7 @@ class ViewController: UIViewController {
         return label
     }()
 
-    var line: UIView = {
+    let line: UIView = {
         let line = UIView()
         line.translatesAutoresizingMaskIntoConstraints = false
         line.widthAnchor.constraint(equalToConstant: 2).isActive = true
@@ -52,7 +54,7 @@ class ViewController: UIViewController {
         return line
     }()
 
-    var label: UILabel = {
+    let label: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .boldSystemFont(ofSize: 20)
@@ -60,7 +62,7 @@ class ViewController: UIViewController {
         return label
     }()
 
-    var timerStartButton: UIButton = {
+    let timerStartButton: UIButton = {
         let button = UIButton()
         let image = UIImage(systemName: "timer", withConfiguration: UIImage.SymbolConfiguration(textStyle: .largeTitle))
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -70,7 +72,7 @@ class ViewController: UIViewController {
         return button
     }()
 
-    var resumeButton: UIButton = {
+    let resumeButton: UIButton = {
         let button = UIButton()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setTitle("Session\nStart", for: .normal)
@@ -81,20 +83,20 @@ class ViewController: UIViewController {
         return button
     }()
 
-    var stopModeToggleButton: UISwitch = {
+    let stopModeToggleButton: UISwitch = {
         let uiswitch = UISwitch()
         uiswitch.translatesAutoresizingMaskIntoConstraints = false
         return uiswitch
     }()
 
-    var showTimerToggleButton: UISwitch = {
+    let showTimerToggleButton: UISwitch = {
         let uiswitch = UISwitch()
         uiswitch.translatesAutoresizingMaskIntoConstraints = false
         uiswitch.isOn = true
         return uiswitch
     }()
 
-    func resumeButtonTapped() {
+    private func resumeButtonTapped() {
         // Create a session configuration
         let configuration = ARWorldTrackingConfiguration()
 
@@ -106,7 +108,7 @@ class ViewController: UIViewController {
         sessionIsPaused = false
     }
 
-    func timerStartButtonTapped() {
+    private func timerStartButtonTapped() {
         timerLabel.text = "00:00.00"
         guard !timerStarted, !sessionIsPaused else { return }
         timerStarted = true
@@ -115,21 +117,21 @@ class ViewController: UIViewController {
         displayLink?.add(to: .main, forMode: .default)
     }
 
-    @objc func checkForNextZeroSecond() {
+    @objc private func checkForNextZeroSecond() {
         let currentSeconds = Calendar.current.component(.second, from: Date())
         guard currentSeconds == 0 else { return }
         displayLink?.invalidate()
         startTimer()
     }
 
-    func startTimer() {
+    private func startTimer() {
         startTime = CACurrentMediaTime()
 
         displayLink = CADisplayLink(target: self, selector: #selector(updateElapsedTime))
         displayLink?.add(to: .main, forMode: .default)
     }
 
-    @objc func updateElapsedTime() {
+    @objc private func updateElapsedTime() {
         let currentTime = CACurrentMediaTime()
         elapsedTime = currentTime - startTime
 
@@ -139,9 +141,6 @@ class ViewController: UIViewController {
 
         timerLabel.text = String(format: "%02d:%02d.%02d", minutes, seconds, fraction)
     }
-
-    /// session.runしてから距離を検出するまでのraycast.result=nilで停止しないためのフラグ
-    var flag = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -162,6 +161,10 @@ class ViewController: UIViewController {
         sceneView.scene = scene
         sceneView.session = session
 
+        setView()
+    }
+
+    private func setView() {
         sceneView.addSubview(label)
         sceneView.addSubview(line)
         sceneView.addSubview(resumeButton)
@@ -246,7 +249,7 @@ extension ViewController: ARSessionDelegate {
         }
     }
 
-    func calculateDistance(raycastResult: ARRaycastResult, frame: ARFrame) -> Float {
+    private func calculateDistance(raycastResult: ARRaycastResult, frame: ARFrame) -> Float {
         let position = SCNVector3(
             raycastResult.worldTransform.columns.3.x,
             raycastResult.worldTransform.columns.3.y,
